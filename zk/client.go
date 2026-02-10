@@ -1,16 +1,19 @@
 package zk
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-zookeeper/zk"
 )
 
 type Client struct {
-	root string // 根节点
+	conn *zk.Conn // ZooKeeper 连接
+	root string   // 根节点
 }
 
-func NewClient(addr string, sessionTimeout time.Duration) (*Client, error) {
+func NewClient(ctx context.Context, addr string, sessionTimeout time.Duration) (*Client, error) {
 	hosts, root, err := parse(addr)
 	if err != nil {
 		return nil, err
@@ -20,17 +23,23 @@ func NewClient(addr string, sessionTimeout time.Duration) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 
-	// 等待会话建立
-	for event := range eventChan {
-		if event.State == zk.StateHasSession {
-			break
+	// 等待会话建立或超时
+	for {
+		select {
+		case event := <-eventChan:
+			if event.State == zk.StateHasSession {
+				return &Client{conn: conn, root: root}, nil
+			}
+		case <-ctx.Done():
+			conn.Close()
+			return nil, fmt.Errorf("连接超时: %w", ctx.Err())
 		}
 	}
+}
 
-	c := &Client{
-		root: root,
+func (c *Client) Close() {
+	if c.conn != nil {
+		c.conn.Close()
 	}
-	return c, nil
 }

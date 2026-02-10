@@ -77,17 +77,23 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClient(tt.addr, tt.sessionTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("NewClient() 期望返回错误，但没有")
+			client, err := NewClient(ctx, tt.addr, tt.sessionTimeout)
+			if err != nil {
+				if tt.wantErr {
+					return
 				}
+
+				t.Errorf("NewClient() 意外错误: %v", err)
 				return
 			}
 
-			if err != nil {
-				t.Errorf("NewClient() 意外错误: %v", err)
+			defer client.Close()
+
+			if tt.wantErr {
+				t.Errorf("NewClient() 期望返回错误，但没有")
 				return
 			}
 
@@ -95,5 +101,22 @@ func TestNewClient(t *testing.T) {
 				t.Errorf("NewClient() root = %q, 期望 %q", client.root, tt.wantRoot)
 			}
 		})
+	}
+}
+
+func TestNewClientTimeout(t *testing.T) {
+	// 使用极短的超时上下文，不需要真实 ZK
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+
+	// 等待超时生效，让 context 真正在使用前过期
+	time.Sleep(50 * time.Millisecond)
+
+	// 使用不存在的地址，context 应该先超时
+	client, err := NewClient(ctx, "127.0.0.1:9999/tango", 5*time.Second)
+
+	if err == nil {
+		t.Error("NewClient() 期望返回超时错误，但没有")
+		client.Close()
 	}
 }
