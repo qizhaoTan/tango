@@ -6,11 +6,11 @@ import (
 
 func TestParse(t *testing.T) {
 	tests := []struct {
-		name        string
-		addr        string
-		wantHosts   []string
-		wantRoot    string
-		wantErr     bool
+		name      string
+		addr      string
+		wantHosts []string
+		wantRoot  string
+		wantErr   bool
 	}{
 		{
 			name:      "带zk://前缀",
