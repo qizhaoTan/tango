@@ -2,6 +2,8 @@ package zk
 
 import (
 	"context"
+	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -9,11 +11,13 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestNewClient(t *testing.T) {
-	if testing.Short() {
-		t.Skip("跳过集成测试")
-	}
+var (
+	testContainer testcontainers.Container
+	testHost      string
+	testPort      string
+)
 
+func TestMain(m *testing.M) {
 	ctx := context.Background()
 
 	// 启动 ZooKeeper 容器
@@ -31,18 +35,37 @@ func TestNewClient(t *testing.T) {
 		Started: true,
 	})
 	if err != nil {
-		t.Fatalf("启动 ZooKeeper 容器失败: %v", err)
+		panic("启动 ZooKeeper 容器失败: " + err.Error())
 	}
-	defer container.Terminate(ctx)
+
+	testContainer = container
 
 	// 获取容器映射的主机端口
 	host, err := container.Host(ctx)
 	if err != nil {
-		t.Fatalf("获取容器主机失败: %v", err)
+		panic("获取容器主机失败: " + err.Error())
 	}
+	testHost = host
+
 	port, err := container.MappedPort(ctx, "2181")
 	if err != nil {
-		t.Fatalf("获取映射端口失败: %v", err)
+		panic("获取映射端口失败: " + err.Error())
+	}
+	testPort = port.Port()
+	log.Printf("启动 ZooKeeper 成功 %s:%s\n", testHost, testPort)
+
+	// 运行测试
+	exitCode := m.Run()
+
+	// 清理容器
+	container.Terminate(ctx)
+
+	os.Exit(exitCode)
+}
+
+func TestNewClient(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过集成测试")
 	}
 	// 测试创建客户端
 	tests := []struct {
@@ -54,21 +77,21 @@ func TestNewClient(t *testing.T) {
 	}{
 		{
 			name:           "正常创建",
-			addr:           host + ":" + port.Port() + "/tango",
+			addr:           testHost + ":" + testPort + "/tango",
 			sessionTimeout: 5 * time.Second,
 			wantRoot:       "/tango",
 			wantErr:        false,
 		},
 		{
 			name:           "带前缀",
-			addr:           "zk://" + host + ":" + port.Port() + "/tango",
+			addr:           "zk://" + testHost + ":" + testPort + "/tango",
 			sessionTimeout: 5 * time.Second,
 			wantRoot:       "/tango",
 			wantErr:        false,
 		},
 		{
 			name:           "根路径为/",
-			addr:           host + ":" + port.Port() + "/",
+			addr:           testHost + ":" + testPort + "/",
 			sessionTimeout: 5 * time.Second,
 			wantRoot:       "/",
 			wantErr:        false,
