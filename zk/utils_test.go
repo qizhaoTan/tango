@@ -102,3 +102,56 @@ func equalStringSlice(a, b []string) bool {
 	}
 	return true
 }
+
+func TestGetParentPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		want     string
+	}{
+		{
+			name: "单层路径",
+			path: "/a",
+			want: "/",
+		},
+		{
+			name: "多层路径",
+			path: "/a/b/c",
+			want: "/a/b",
+		},
+		{
+			name: "根路径",
+			path: "/",
+			want: "",
+		},
+		{
+			name: "空路径",
+			path: "",
+			want: "",
+		},
+		{
+			name: "带尾部斜杠的路径",
+			path: "/a/b/",
+			want: "/a",
+		},
+		{
+			name: "两层路径",
+			path: "/a/b",
+			want: "/a",
+		},
+		{
+			name: "斜杠结尾的根路径",
+			path: "//",
+			want: "/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getParentPath(tt.path)
+			if got != tt.want {
+				t.Errorf("getParentPath(%q) = %q, 期望 %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}

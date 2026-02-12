@@ -4,9 +4,11 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-zookeeper/zk"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -141,5 +143,130 @@ func TestNewClientTimeout(t *testing.T) {
 	if err == nil {
 		t.Error("NewClient() 期望返回超时错误，但没有")
 		client.Close()
+	}
+}
+
+func TestEnsurePath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过集成测试")
+	}
+
+	tests := []struct {
+		name      string
+		root      string
+		paths     []string
+		wantError bool
+	}{
+		{
+			name:      "创建单层路径",
+			root:      "/test",
+			paths:     []string{"/a"},
+			wantError: false,
+		},
+		{
+			name:      "创建多层路径",
+			root:      "/test",
+			paths:     []string{"/a/b/c"},
+			wantError: false,
+		},
+		{
+			name:      "创建重复路径",
+			root:      "/test",
+			paths:     []string{"/d", "/d"},
+			wantError: false,
+		},
+		{
+			name:      "创建空路径",
+			root:      "/test",
+			paths:     []string{""},
+			wantError: false,
+		},
+		{
+			name:      "创建根路径",
+			root:      "/test",
+			paths:     []string{"/"},
+			wantError: false,
+		},
+		{
+			name:      "创建多个相对路径",
+			root:      "/test",
+			paths:     []string{"/e/f", "/e/g", "/h"},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			addr := testHost + ":" + testPort + tt.root
+			client, err := NewClient(ctx, addr, 5*time.Second)
+			if err != nil {
+				t.Fatalf("创建客户端失败: %v", err)
+			}
+			defer client.Close()
+
+			for _, path := range tt.paths {
+				err := client.EnsurePath(path)
+				if tt.wantError && err == nil {
+					t.Errorf("EnsurePath(%q) 期望返回错误，但没有", path)
+				} else if !tt.wantError && err != nil {
+					t.Errorf("EnsurePath(%q) 意外错误: %v", path, err)
+				}
+			}
+
+			// 验证路径确实存在
+			for _, path := range tt.paths {
+				if path == "" || path == "/" {
+					continue
+				}
+				realPath := client.realPath(path)
+				exists, _, err := client.conn.Exists(realPath)
+				if err != nil {
+					t.Errorf("验证节点 %s 存在失败: %v", path, err)
+				} else if !exists {
+					t.Errorf("节点 %s 应该存在但不存在", path)
+				}
+			}
+		})
+	}
+}
+
+func TestEnsurePathWithEphemeralNode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过集成测试")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	addr := testHost + ":" + testPort + "/test-ephemeral"
+	client, err := NewClient(ctx, addr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("创建客户端失败: %v", err)
+	}
+	defer client.Close()
+
+	// 确保父节点路径存在
+	if err := client.EnsurePath(""); err != nil {
+		t.Fatalf("确保根路径存在失败: %v", err)
+	}
+
+	// 创建一个临时节点
+	tempPath := "/ephemeral-node"
+	realPath := client.realPath(tempPath)
+	_, err = client.conn.Create(realPath, nil, zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		t.Fatalf("创建临时节点失败: %v", err)
+	}
+
+	// 尝试在临时节点下创建子节点，应该报错
+	childPath := tempPath + "/child"
+	err = client.EnsurePath(childPath)
+	if err == nil {
+		t.Error("EnsurePath 应该在临时节点下创建子节点时返回错误，但没有")
+	} else if !strings.Contains(err.Error(), "临时节点") {
+		t.Errorf("EnsurePath 返回错误不正确: %v", err)
 	}
 }
