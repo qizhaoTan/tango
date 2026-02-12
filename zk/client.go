@@ -71,16 +71,12 @@ func (c *Client) EnsurePath(path string) error {
 // ensurePathRecursive 递归创建节点
 func (c *Client) ensurePathRecursive(path string) error {
 	// 检查节点是否存在
-	exists, stat, err := c.conn.Exists(path)
+	exists, _, err := c.conn.Exists(path)
 	if err != nil {
 		return fmt.Errorf("检查节点 %s 是否存在失败: %w", path, err)
 	}
 
 	if exists {
-		// 如果节点是临时节点，不能有子节点，返回错误
-		if stat.EphemeralOwner != 0 {
-			return fmt.Errorf("节点 %s 是临时节点，不能有子节点", path)
-		}
 		return nil
 	}
 

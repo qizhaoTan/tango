@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -261,12 +260,15 @@ func TestEnsurePathWithEphemeralNode(t *testing.T) {
 		t.Fatalf("创建临时节点失败: %v", err)
 	}
 
+	err = client.EnsurePath(tempPath)
+	if err != nil {
+		t.Errorf("EnsurePath tempPath %s 路径存在，但是报错 %s", tempPath, err)
+	}
+
 	// 尝试在临时节点下创建子节点，应该报错
 	childPath := tempPath + "/child"
 	err = client.EnsurePath(childPath)
 	if err == nil {
 		t.Error("EnsurePath 应该在临时节点下创建子节点时返回错误，但没有")
-	} else if !strings.Contains(err.Error(), "临时节点") {
-		t.Errorf("EnsurePath 返回错误不正确: %v", err)
 	}
 }
